@@ -20,9 +20,9 @@
     *{box-sizing:border-box} html,body{height:100%}
     body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:var(--text)}
     .page{min-height:100vh;display:flex;flex-direction:column}
-    /* Background video for happy state */
-    .bg-video-wrap{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-    .bg-video{width:100%;height:100%;object-fit:cover;opacity:0.18;filter:saturate(1.05) contrast(1.05)}
+    /* ASCII background animation (happy state) */
+    .ascii-bg{position:fixed;inset:0;z-index:0;pointer-events:none;display:flex;align-items:center;justify-content:center;overflow:hidden;opacity:0.22}
+    .ascii-bg pre{margin:0;white-space:pre;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:12px;line-height:12px;color:var(--text)}
     .container{max-width:1100px;margin:0 auto;padding:16px;width:100%}
     .banner{position:sticky;top:0;z-index:50}
     .card{background:rgba(124,58,237,0.10);border:1px solid var(--panel-border);border-radius:16px;padding:16px}
@@ -337,12 +337,21 @@
 
       return (
         <div className={`page ${isDown ? 'down' : ''} ${isDown ? 'stress' : ''}`}>
-          {/* Happy background video (plays only when not down) */}
+          {/* Happy ASCII background when not down (light, looping) */}
           {!isDown && (
-            <div className="bg-video-wrap" aria-hidden>
-              <video className="bg-video" autoplay muted loop playsInline>
-                <source src="happy-cluster.mp4" type="video/mp4" />
-              </video>
+            <div className="ascii-bg" aria-hidden>
+              <pre>{`
+   ____________      ____________      ____________
+  |  Node A   |_____/   Node B   |____/   Node C   |
+  |  [::]  :)|     |   [::]  :) |    |   [::]  :) |
+  |__________|     |_____________|    |____________|
+      |   |             |   |                |   |
+   ___|___|___      ____|___|____       ____|___|____
+  |  STORAGE  |-->  |  SCHEDULER  | --> |  NETWORK   |
+  |  [ OK ]   |     |   [ OK ]    |     |   [ OK ]   |
+  |___________|     |_____________|     |____________|
+              ~ packets dancing happily ~
+`}</pre>
             </div>
           )}
           {/* Banner */}
