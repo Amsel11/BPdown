@@ -21,8 +21,13 @@
     body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:var(--text)}
     .page{min-height:100vh;display:flex;flex-direction:column}
     /* ASCII background animation (happy state) */
-    .ascii-bg{position:fixed;inset:0;z-index:0;pointer-events:none;display:flex;align-items:center;justify-content:center;overflow:hidden;opacity:0.22}
-    .ascii-bg pre{margin:0;white-space:pre;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:12px;line-height:12px;color:var(--text)}
+    .ascii-bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;opacity:0.2}
+    .ascii-tiles{position:absolute;inset:-10%;display:grid;grid-template-columns:repeat(6, minmax(220px, 1fr));gap:32px;transform:scale(1.05)}
+    .ascii-tile{margin:0;white-space:pre;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:12px;line-height:12px;color:var(--text);animation:dance 3.2s ease-in-out infinite}
+    .ascii-tile:nth-child(3n){animation-duration:3.8s}
+    .ascii-tile:nth-child(4n){animation-duration:2.9s}
+    .ascii-tile:nth-child(5n){animation-duration:4.2s}
+    @keyframes dance{0%{transform:translateY(0) rotate(0)}50%{transform:translateY(6px) rotate(0.3deg)}100%{transform:translateY(0) rotate(0)}}
     .container{max-width:1100px;margin:0 auto;padding:16px;width:100%}
     .banner{position:sticky;top:0;z-index:50}
     .card{background:rgba(124,58,237,0.10);border:1px solid var(--panel-border);border-radius:16px;padding:16px}
@@ -71,9 +76,11 @@
     .stat .val{font-weight:700;font-variant-numeric:tabular-nums;font-size:18px}
 
     .modal-backdrop{position:fixed;inset:0;background:transparent;backdrop-filter:none;display:flex;align-items:center;justify-content:center;padding:16px;z-index:60}
-    .rip-card{background:rgba(255,255,255,0.92);border:1px solid var(--panel-border);border-radius:18px;padding:16px 20px;color:var(--text);max-width:420px;width:100%}
+    .rip-card{background:rgba(255,255,255,0.92);border:1px solid var(--panel-border);border-radius:18px;padding:16px 20px;color:var(--text);max-width:480px;width:100%}
     .close-btn{padding:10px 14px;border-radius:12px;border:1px solid var(--panel-border);background:rgba(124,58,237,0.9);color:white;cursor:pointer}
     .sys-panel{background:#7C3AED;border:2px solid rgba(255,255,255,0.15);border-radius:18px;padding:20px;text-align:center;margin-bottom:16px;animation:wobble 2.4s ease-in-out infinite}
+    .down-video{width:min(360px,85vw);max-height:52vh;height:auto;border-radius:18px;display:block;margin:0 auto;object-fit:cover}
+    @media(max-width:520px){ .rip-details{ display:none } }
 
     /* Stress animation for the whole board when down */
     .stress {
@@ -275,6 +282,7 @@
       const pressTimer = useRef(null);
       const [subtextIndex, setSubtextIndex] = useState(0);
       const [showRIP, setShowRIP] = useState(false);
+      const [videoOk, setVideoOk] = useState(true);
       const btnRef = useRef(null);
 
       function chooseNextQuote(){ setSubtextIndex(idx => pickNextIndex(idx, buttonSubtexts.length)); }
@@ -340,18 +348,21 @@
           {/* Happy ASCII background when not down (light, looping) */}
           {!isDown && (
             <div className="ascii-bg" aria-hidden>
-              <pre>{`
-   ____________      ____________      ____________
-  |  Node A   |_____/   Node B   |____/   Node C   |
-  |  [::]  :)|     |   [::]  :) |    |   [::]  :) |
-  |__________|     |_____________|    |____________|
-      |   |             |   |                |   |
-   ___|___|___      ____|___|____       ____|___|____
-  |  STORAGE  |-->  |  SCHEDULER  | --> |  NETWORK   |
-  |  [ OK ]   |     |   [ OK ]    |     |   [ OK ]   |
-  |___________|     |_____________|     |____________|
-              ~ packets dancing happily ~
+              <div className="ascii-tiles">
+                {Array.from({length:48}).map((_,i)=> (
+                  <pre key={i} className="ascii-tile">{`
+  ____________      ____________
+ |  Node ${String.fromCharCode(65+(i%26))}   |_____/   Node ${String.fromCharCode(66+(i%26))}   |
+ |  [::]  :)|     |   [::]  :) |
+ |__________|     |_____________|
+     |   |             |   |
+  ___|___|___      ____|___|____
+ |  STORAGE  |-->  |  SCHEDULER  |
+ |  [ OK ]   |     |   [ OK ]    |
+ |___________|     |_____________|
 `}</pre>
+                ))}
+              </div>
             </div>
           )}
           {/* Banner */}
@@ -463,12 +474,16 @@
               <div className="rip-card">
                 <div style={{fontWeight:800,fontSize:22,marginBottom:12}}>Big Purple is down RIP 💀</div>
                 <div style={{margin:'0 auto',width:360,maxWidth:'100%'}}>
-                  <div className="sys-panel" style={{padding:0}}>
-                    {/* Down-state video */}
-                    <video width="100%" autoplay muted loop playsInline style={{borderRadius:18, display:'block'}}>
-                      <source src="bp-down.mp4" type="video/mp4" />
-                    </video>
-                    <div style={{padding:'10px 16px'}}>
+                  <div className="sys-panel" style={{padding:0, background:'transparent', border:'none'}}>
+                    {/* Down-state media with GIF fallback; ensure autoplay on mobile */}
+                    {videoOk ? (
+                      <video className="down-video" autoPlay={true} muted={true} loop={true} playsInline={true} onError={()=>setVideoOk(false)} preload="auto">
+                        <source src="bp-down.MP4" type="video/mp4" />
+                      </video>
+                    ) : (
+                      <img className="down-video" src="bp-down.gif" alt="BP down" />
+                    )}
+                    <div className="rip-details" style={{padding:'10px 16px'}}>
                       <div style={{fontSize:'24px',fontWeight:'bold'}}>SYSTEM DOWN</div>
                       <div style={{fontSize:'14px',opacity:0.9,marginTop:'8px'}}>
                         ❌ GPU Queue: OFFLINE<br/>
