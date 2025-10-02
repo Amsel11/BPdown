@@ -117,6 +117,9 @@
     // Supabase client (set your values below)
     const SUPABASE_URL = 'https://ubjtolpbcxkcjazxvchd.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVianRvbHBiY3hrY2phenh2Y2hkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0MTc3NzMsImV4cCI6MjA3NDk5Mzc3M30.NpjH91gCRSx8z17xY5bE4zYhlkKYWBAJkHi3q1FYRpw';
+    // OPTIONAL: Slack Incoming Webhook URL (for quick prototype). Replace with your real webhook URL.
+    // Note: Putting this in a public page exposes the URL; rotate it later or move to a serverless function.
+    const SLACK_WEBHOOK_URL = '';
     const supabase = (window.supabase && window.supabase.createClient && SUPABASE_URL.startsWith('https'))
       ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
       : null;
@@ -175,6 +178,17 @@
         isDown ? 0 : Math.max(0, Math.floor((now() - lastOutageTs) / 86400000))
       ), [isDown, lastOutageTs, tick]);
 
+      async function sendSlackSimple(text){
+        if (!SLACK_WEBHOOK_URL || !SLACK_WEBHOOK_URL.startsWith('https://hooks.slack.com/')) return;
+        try{
+          await fetch(SLACK_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json' },
+            body: JSON.stringify({ text })
+          });
+        }catch(e){ console.warn('Slack webhook error', e); }
+      }
+
       // --- Supabase sync ---
       useEffect(() => {
         if (!supabase) return;
@@ -216,6 +230,8 @@
         try {
           await supabase.from('status').upsert({ id:1, is_down:true, last_outage_ts:startTs }, { onConflict:'id' });
         } catch (e) { console.warn('Supabase status upsert (down) error', e); }
+        const when = new Date(startTs).toLocaleString();
+        sendSlackSimple(`:rotating_light: BP WENT DOWN at ${when}`);
       }
       async function dbMarkUp(endTs){
         if (!supabase) return;
@@ -225,6 +241,8 @@
         try {
           await supabase.from('status').upsert({ id:1, is_down:false, last_outage_ts:endTs }, { onConflict:'id' });
         } catch (e) { console.warn('Supabase status upsert (up) error', e); }
+        const when = new Date(endTs).toLocaleString();
+        sendSlackSimple(`:white_check_mark: BP is performative again at ${when}`);
       }
 
       const stats = useMemo(() => {
@@ -252,11 +270,25 @@
           const AC = window.AudioContext || window.webkitAudioContext;
           if (AC) audioCtxRef.current = new AC();
         }
-        return audioCtxRef.current;
+        const ctx = audioCtxRef.current;
+        if (ctx && ctx.state === 'suspended') {
+          try { ctx.resume(); } catch {}
+        }
+        return ctx;
       }
+      // Attempt to unlock audio on first user gesture (mobile Safari, etc.)
+      useEffect(() => {
+        const unlock = () => { const ctx = ensureCtx(); if (ctx && ctx.state === 'suspended') { try{ ctx.resume(); }catch{} } };
+        window.addEventListener('pointerdown', unlock, { once:true });
+        window.addEventListener('touchstart', unlock, { once:true });
+        return () => {
+          window.removeEventListener('pointerdown', unlock);
+          window.removeEventListener('touchstart', unlock);
+        };
+      }, []);
       function playThock(){
         if (isMuted) return;
-        const ctx = ensureCtx(); if (!ctx) return;
+        const ctx = ensureCtx(); if (!ctx) return; if (ctx.state==='suspended') { try{ ctx.resume(); }catch{} }
         const o = ctx.createOscillator(), g = ctx.createGain();
         o.type="square"; o.frequency.setValueAtTime(140, ctx.currentTime);
         o.frequency.exponentialRampToValueAtTime(90, ctx.currentTime+0.06);
@@ -267,7 +299,7 @@
       }
       function playFlatline(){
         if (isMuted) return;
-        const ctx = ensureCtx(); if (!ctx) return;
+        const ctx = ensureCtx(); if (!ctx) return; if (ctx.state==='suspended') { try{ ctx.resume(); }catch{} }
         const o = ctx.createOscillator(), g = ctx.createGain();
         o.type="sine"; o.frequency.setValueAtTime(880, ctx.currentTime);
         g.gain.setValueAtTime(0.0001, ctx.currentTime);
@@ -283,6 +315,7 @@
       const [subtextIndex, setSubtextIndex] = useState(0);
       const [showRIP, setShowRIP] = useState(false);
       const [videoOk, setVideoOk] = useState(true);
+      const downVideoRef = useRef(null);
       const btnRef = useRef(null);
 
       function chooseNextQuote(){ setSubtextIndex(idx => pickNextIndex(idx, buttonSubtexts.length)); }
@@ -331,6 +364,27 @@
         persist(t, streaks, false);
         dbMarkUp(t);
       }
+
+      // When popup opens or mute state changes, try to play video with sound unless muted
+      useEffect(() => {
+        if (!showRIP) return;
+        const v = downVideoRef.current;
+        if (!v) return;
+        try{
+          v.muted = isMuted;
+          v.currentTime = 0;
+          const p = v.play();
+          if (p && p.catch) {
+            p.catch(async () => {
+              // If autoplay with sound is blocked, fallback to muted autoplay
+              if (!isMuted) {
+                v.muted = true;
+                try { await v.play(); } catch {}
+              }
+            });
+          }
+        }catch{}
+      }, [showRIP, isMuted]);
 
       const quips = [
         "Remember to `git stash` before the storm.",
@@ -477,7 +531,7 @@
                   <div className="sys-panel" style={{padding:0, background:'transparent', border:'none'}}>
                     {/* Down-state media with GIF fallback; ensure autoplay on mobile */}
                     {videoOk ? (
-                      <video className="down-video" autoPlay={true} muted={true} loop={true} playsInline={true} onError={()=>setVideoOk(false)} preload="auto">
+                      <video ref={downVideoRef} className="down-video" autoPlay={true} muted={false} loop={true} playsInline={true} onError={()=>setVideoOk(false)} preload="auto">
                         <source src="bp-down.MP4" type="video/mp4" />
                       </video>
                     ) : (
