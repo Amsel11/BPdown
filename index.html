@@ -161,6 +161,9 @@
         return () => clearInterval(id);
       }, []);
       const elapsedSinceOutage = useMemo(() => (now() - lastOutageTs), [lastOutageTs, tick]);
+      const daysSinceLastIssue = useMemo(() => (
+        isDown ? 0 : Math.max(0, Math.floor((now() - lastOutageTs) / 86400000))
+      ), [isDown, lastOutageTs, tick]);
 
       // --- Supabase sync ---
       useEffect(() => {
@@ -335,6 +338,10 @@
           <div className="banner">
             <div className="container">
               <div className="card" style={{position:'relative', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap: '24px 0'}}>
+                <div style={{minWidth:200}}>
+                  <div className="hush" style={{marginBottom:6}}>Days since last BP issue</div>
+                  <div className="time" style={{fontSize:'clamp(22px,4vw,48px)'}} aria-live="polite">{String(daysSinceLastIssue)}</div>
+                </div>
                 <div>
                   <div className="hush">{isDown ? 'Time BP is down' : 'Time since BP went down'}</div>
                   <div className="time" aria-live="polite">{formatDuration(elapsedSinceOutage)}</div>
