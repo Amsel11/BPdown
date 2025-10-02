@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BP Is Down!! – Outage Funboard</title>
+  <meta name="description" content="Big Purple outage funboard" />
+  <style>
+    :root{
+      --bg:#c8a8e9;
+      --panel:rgba(255,255,255,0.15);
+      --panel-border:rgba(255,255,255,0.25);
+      --text:#2d1b69; --muted:rgba(45,27,105,0.8); --muter:rgba(45,27,105,0.7);
+      --purple-600:#7c3aed;
+      --socket-glow-1:rgba(168,85,247,0.6);
+      --socket-glow-2:rgba(168,85,247,0.28);
+      --socket-glow-3:rgba(168,85,247,0.45);
+      --socket-glow-4:rgba(168,85,247,0.25);
+    }
+    *{box-sizing:border-box} html,body{height:100%}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:var(--text)}
+    .page{min-height:100vh;display:flex;flex-direction:column}
+    .container{max-width:1100px;margin:0 auto;padding:16px;width:100%}
+    .banner{position:sticky;top:0;z-index:50}
+    .card{background:rgba(124,58,237,0.10);border:1px solid var(--panel-border);border-radius:16px;padding:16px}
+    .hush{color:var(--muted);font-size:12px;letter-spacing:.18em;text-transform:uppercase}
+    .time{font-weight:800;font-variant-numeric:tabular-nums;font-size:clamp(28px,5vw,56px)}
+    .muted{color:var(--muted);font-size:14px}
+    .pill{background:rgba(255,255,255,0.08);border:1px solid var(--panel-border);border-radius:9999px;padding:6px 10px;font-size:12px;cursor:pointer}
+    .center{flex:1;display:flex;align-items:center;justify-content:center;padding:0;background:transparent;border:0;box-shadow:none}
+    .socket{position:relative;background:transparent;border:none;box-shadow:none}
+
+    /* --- Giant button --- */
+    .btn-wrap{position:relative;outline:none;border:none;background:transparent;padding:0;box-shadow:none;transition:all .15s cubic-bezier(.4,0,.2,1);border-radius:50%}
+    .btn-cap{
+      border-radius:50%;width:300px;height:300px;display:flex;align-items:center;justify-content:center;
+      background:rgba(124,58,237,0.78);border:1px solid rgba(255,255,255,0.3);
+      color:white;font-weight:900;letter-spacing:.02em;box-shadow:inset 0 3px 6px rgba(255,255,255,0.2);
+      position:relative;transform:translateY(0) scale(1);transition:all .15s cubic-bezier(.4,0,.2,1);
+    }
+    .btn-shine{position:absolute;inset:-3px;border-radius:50%;background:linear-gradient(to bottom,rgba(255,255,255,0.25),transparent);pointer-events:none;transition:opacity .12s ease}
+    .subtext{position:absolute;left:50%;transform:translateX(-50%);bottom:-36px;color:var(--muted);font-size:14px;white-space:nowrap}
+    .button-disabled{cursor:not-allowed}
+    .btn-press{transform:translateY(28px) scale(0.985);box-shadow:0 0 28px var(--socket-glow-3), 0 0 80px var(--socket-glow-4) !important}
+    .btn-normal{transform:translateY(0) scale(1);box-shadow:0 0 44px var(--socket-glow-1), 0 0 140px var(--socket-glow-2)}
+
+    /* Idle breathing (off while pressed/disabled) */
+    @keyframes breathe { 0%{transform:translateY(0) scale(1)} 50%{transform:translateY(0) scale(1.015)} 100%{transform:translateY(0) scale(1)} }
+    .btn-wrap:not(.btn-press):not(.button-disabled) .btn-cap{ animation:breathe 2.4s ease-in-out infinite; }
+
+    /* Click ripple (centered burst) */
+    .ripple{
+      position:absolute; left:50%; top:50%; width:18px; height:18px; border-radius:9999px; pointer-events:none;
+      background:rgba(124,58,237,.55); transform:translate(-50%,-50%) scale(.2); filter:blur(0.5px);
+      animation:ripple 600ms ease-out forwards;
+    }
+    @keyframes ripple{ to{opacity:0; transform:translate(-50%,-50%) scale(6)} }
+
+    /* Popup + wobble */
+    .popup-enter{animation:popupEnter .32s cubic-bezier(.4,0,.2,1)}
+    @keyframes popupEnter{from{opacity:0;transform:scale(.95) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+    @keyframes wobble{0%{transform:rotate(-2deg) translateY(0)}50%{transform:rotate(2deg) translateY(2px)}100%{transform:rotate(-2deg) translateY(0)}}
+
+    .score-grid{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
+    @media(min-width:860px){.score-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+    .stat{border:1px solid var(--panel-border);background:rgba(0,0,0,0.35);border-radius:12px;padding:12px}
+    .stat .lbl{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,0.6)}
+    .stat .val{font-weight:700;font-variant-numeric:tabular-nums;font-size:18px}
+
+    .modal-backdrop{position:fixed;inset:0;background:transparent;backdrop-filter:none;display:flex;align-items:center;justify-content:center;padding:16px;z-index:60}
+    .rip-card{background:rgba(255,255,255,0.92);border:1px solid var(--panel-border);border-radius:18px;padding:16px 20px;color:var(--text);max-width:420px;width:100%}
+    .close-btn{padding:10px 14px;border-radius:12px;border:1px solid var(--panel-border);background:rgba(124,58,237,0.9);color:white;cursor:pointer}
+    .sys-panel{background:#7C3AED;border:2px solid rgba(255,255,255,0.15);border-radius:18px;padding:20px;text-align:center;margin-bottom:16px;animation:wobble 2.4s ease-in-out infinite}
+
+    /* Stress animation for the whole board when down */
+    .stress {
+      animation: stressShake 0.1s ease-in-out 0s 20;
+      /* 0.1s * 50 = 5s total duration, then animation stops */
+    }
+    @keyframes stressShake{
+      0%{ transform:translate(0,0) rotate(0deg) }
+      15%{ transform:translate(-2px,1px) rotate(-0.3deg) }
+      30%{ transform:translate(2px,-1px) rotate(0.2deg) }
+      45%{ transform:translate(-1px,2px) rotate(0.1deg) }
+      60%{ transform:translate(1px,-2px) rotate(-0.2deg) }
+      75%{ transform:translate(-1px,1px) rotate(0.2deg) }
+      100%{ transform:translate(0,0) rotate(0deg) }
+    }
+    /* Darken background during stress, keep darker after */
+    .page{ transition: background .25s ease }
+    .page.down{ background:#b39aef }
+    .page.down.stress{ background:#9f79e6 }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + ReactDOM + Babel -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Supabase JS v2 UMD build (exposes window.supabase) -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useState, useEffect, useMemo, useRef } = React;
+    // Supabase client (set your values below)
+    const SUPABASE_URL = 'https://ubjtolpbcxkcjazxvchd.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVianRvbHBiY3hrY2phenh2Y2hkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0MTc3NzMsImV4cCI6MjA3NDk5Mzc3M30.NpjH91gCRSx8z17xY5bE4zYhlkKYWBAJkHi3q1FYRpw';
+    const supabase = (window.supabase && window.supabase.createClient && SUPABASE_URL.startsWith('https'))
+      ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+      : null;
+
+    const STORAGE_KEYS = {
+      lastOutageTs: "bp_last_outage_ts",
+      streaks: "bp_uptime_streaks",
+      isDown: "bp_is_down",
+    };
+    const now = () => Date.now();
+    const formatDuration = (ms) => {
+      if (ms < 0 || !Number.isFinite(ms)) return "--";
+      const s = Math.floor(ms / 1000);
+      const days = Math.floor(s / 86400);
+      const hrs = Math.floor((s % 86400) / 3600);
+      const mins = Math.floor((s % 3600) / 60);
+      const secs = s % 60;
+      const dd = days > 0 ? days + "d " : "";
+      return dd + String(hrs).padStart(2,"0") + ":" + String(mins).padStart(2,"0") + ":" + String(secs).padStart(2,"0");
+    };
+    const buttonSubtexts = [
+      "Click when the cluster faceplants 😵‍💫",
+      "The corgies took over",
+      "If it's pending, I'm pretending to work",
+      "`module load patience` failed",
+      "Today I learned: uptime is a myth",
+      "HPC? More like Hopefully, Please Compute",
+    ];
+    const pickNextIndex = (current, length) => {
+      if (length <= 1) return current;
+      let next = Math.floor(Math.random()*length);
+      if (next === current) next = (next+1)%length;
+      return next;
+    };
+
+    function App(){
+      const [lastOutageTs, setLastOutageTs] = useState(() => {
+        try { const v = localStorage.getItem(STORAGE_KEYS.lastOutageTs); if (v) return Number(v); } catch {}
+        const t = now(); try { localStorage.setItem(STORAGE_KEYS.lastOutageTs, String(t)); } catch {}
+        return t;
+      });
+      const [streaks, setStreaks] = useState(() => {
+        try { const raw = localStorage.getItem(STORAGE_KEYS.streaks); return raw ? JSON.parse(raw) : []; } catch { return []; }
+      });
+      const [isDown, setIsDown] = useState(false);
+
+      const [tick, setTick] = useState(0);
+      useEffect(() => {
+        // Always tick every second so we can count both uptime (not down)
+        // and downtime (down) using the same anchor timestamp
+        const id = setInterval(() => setTick(t=>t+1), 1000);
+        return () => clearInterval(id);
+      }, []);
+      const elapsedSinceOutage = useMemo(() => (now() - lastOutageTs), [lastOutageTs, tick]);
+
+      // --- Supabase sync ---
+      useEffect(() => {
+        if (!supabase) return;
+        let channel;
+        (async () => {
+          // Ensure singleton status row exists
+          const { data, error } = await supabase
+            .from('status')
+            .select('*')
+            .eq('id', 1)
+            .single();
+          if (!data) {
+            await supabase.from('status').upsert({ id: 1, is_down: false, last_outage_ts: now() }, { onConflict: 'id' });
+          } else {
+            setIsDown(Boolean(data.is_down));
+            setLastOutageTs(Number(data.last_outage_ts) || now());
+            setShowRIP(Boolean(data.is_down));
+          }
+          // Realtime subscription for status changes
+          channel = supabase
+            .channel('public:status')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'status', filter: 'id=eq.1' }, (payload) => {
+              const row = payload.new || payload.old;
+              if (!row) return;
+              setIsDown(Boolean(row.is_down));
+              setLastOutageTs(Number(row.last_outage_ts) || now());
+              setShowRIP(Boolean(row.is_down));
+            })
+            .subscribe();
+        })();
+        return () => { if (channel) supabase.removeChannel(channel); };
+      }, []);
+
+      async function dbMarkDown(startTs){
+        if (!supabase) return;
+        try {
+          await supabase.from('outages').insert({ started_at: startTs, ended_at: null, uptime_ms: 0 });
+        } catch (e) { console.warn('Supabase outages insert error', e); }
+        try {
+          await supabase.from('status').upsert({ id:1, is_down:true, last_outage_ts:startTs }, { onConflict:'id' });
+        } catch (e) { console.warn('Supabase status upsert (down) error', e); }
+      }
+      async function dbMarkUp(endTs){
+        if (!supabase) return;
+        try {
+          await supabase.rpc('close_latest_outage', { p_end_ts: endTs });
+        } catch (e) { console.warn('Supabase close_latest_outage error', e); }
+        try {
+          await supabase.from('status').upsert({ id:1, is_down:false, last_outage_ts:endTs }, { onConflict:'id' });
+        } catch (e) { console.warn('Supabase status upsert (up) error', e); }
+      }
+
+      const stats = useMemo(() => {
+        if (!streaks.length) return { max:0, mean:0, median:0, count:0 };
+        const arr = [...streaks.map(s=>s.uptimeMs)].sort((a,b)=>a-b);
+        const sum = arr.reduce((a,b)=>a+b,0);
+        const mid = Math.floor(arr.length/2);
+        const median = arr.length%2 ? arr[mid] : (arr[mid-1]+arr[mid])/2;
+        return { max: Math.max(...arr), mean: sum/arr.length, median, count: arr.length };
+      }, [streaks]);
+
+      function persist(lastTs, list, down = isDown){
+        try{
+          localStorage.setItem(STORAGE_KEYS.lastOutageTs, String(lastTs));
+          localStorage.setItem(STORAGE_KEYS.streaks, JSON.stringify(list));
+          localStorage.setItem(STORAGE_KEYS.isDown, String(down));
+        }catch{}
+      }
+
+      // sound
+      const [isMuted, setIsMuted] = useState(false);
+      const audioCtxRef = useRef(null);
+      function ensureCtx(){
+        if(!audioCtxRef.current){
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (AC) audioCtxRef.current = new AC();
+        }
+        return audioCtxRef.current;
+      }
+      function playThock(){
+        if (isMuted) return;
+        const ctx = ensureCtx(); if (!ctx) return;
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type="square"; o.frequency.setValueAtTime(140, ctx.currentTime);
+        o.frequency.exponentialRampToValueAtTime(90, ctx.currentTime+0.06);
+        g.gain.setValueAtTime(0.0001, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime+0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.09);
+        o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime+0.12);
+      }
+      function playFlatline(){
+        if (isMuted) return;
+        const ctx = ensureCtx(); if (!ctx) return;
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type="sine"; o.frequency.setValueAtTime(880, ctx.currentTime);
+        g.gain.setValueAtTime(0.0001, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.22, ctx.currentTime+0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.18);
+        o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime+0.2);
+      }
+
+      // press feel
+      const [pressed, setPressed] = useState(false);
+      const [pressDepth, setPressDepth] = useState(0);
+      const pressTimer = useRef(null);
+      const [subtextIndex, setSubtextIndex] = useState(0);
+      const [showRIP, setShowRIP] = useState(false);
+      const btnRef = useRef(null);
+
+      function chooseNextQuote(){ setSubtextIndex(idx => pickNextIndex(idx, buttonSubtexts.length)); }
+
+      function startPress(){
+        if (isDown) return;
+        setPressed(true); chooseNextQuote(); playThock();
+        const start = performance.now(), dur = 90, from = pressDepth;
+        const step = (t)=>{ const k = Math.min(1,(t-start)/dur); setPressDepth(from + (1-from)*k); if (k<1) pressTimer.current=requestAnimationFrame(step); };
+        pressTimer.current = requestAnimationFrame(step);
+      }
+      function endPress(){
+        if (pressTimer.current) cancelAnimationFrame(pressTimer.current);
+        pressTimer.current = null; setPressed(false);
+        const start = performance.now(), dur = 180, from = pressDepth;
+        const step = (t)=>{ const k = Math.min(1,(t-start)/dur); setPressDepth(from*(1-k)); if (k<1) requestAnimationFrame(step); };
+        requestAnimationFrame(step);
+      }
+
+      function spawnRipple(){
+        const host = btnRef.current;
+        if (!host) return;
+        const r = document.createElement('span');
+        r.className = 'ripple';
+        host.appendChild(r);
+        r.addEventListener('animationend', () => r.remove(), { once:true });
+      }
+
+      function handleOutagePress(){
+        if (isDown) return;
+        spawnRipple();
+        const t = now();
+        const uptimeMs = t - lastOutageTs;
+        const newEntry = { startedAt:lastOutageTs, endedAt:t, uptimeMs };
+        const next = [newEntry, ...(streaks||[])].slice(0,1000);
+        setStreaks(next); setLastOutageTs(t); setShowRIP(true); setIsDown(true);
+        playFlatline();
+        persist(t, next, true);
+        dbMarkDown(t);
+      }
+
+      function closeRIP(){
+        setShowRIP(false); setIsDown(false);
+        const t = now();
+        setLastOutageTs(t);
+        persist(t, streaks, false);
+        dbMarkUp(t);
+      }
+
+      const quips = [
+        "Remember to `git stash` before the storm.",
+        "Have you tried turning the cluster off and on again? (…wait)",
+        "SLURM says: PENDING. You say: ☕",
+        "`nvidia-smi`: Not Found. Your sanity: Also not found.",
+        "Today’s standup: We stood up. BP didn’t.",
+        "PBS vs SLURM cage match when?",
+        "Error: Confidence not found (code 503)",
+      ];
+      const quip = useMemo(()=>quips[Math.floor(Math.random()*quips.length)], [tick%60]);
+
+      return (
+        <div className={`page ${isDown ? 'down' : ''} ${isDown ? 'stress' : ''}`}>
+          {/* Banner */}
+          <div className="banner">
+            <div className="container">
+              <div className="card" style={{position:'relative', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap: '24px 0'}}>
+                <div>
+                  <div className="hush">{isDown ? 'Time BP is down' : 'Time since BP went down'}</div>
+                  <div className="time" aria-live="polite">{formatDuration(elapsedSinceOutage)}</div>
+                </div>
+                <div style={{display:'flex', alignItems:'center', gap:16}}>
+                  <div style={{
+                    background: 'var(--purple-600)',
+                    color: 'white',
+                    borderRadius: '12px',
+                    padding: '18px 28px',
+                    fontWeight: 800,
+                    fontSize: 'clamp(22px,3vw,32px)',
+                    boxShadow: '0 2px 16px 0 rgba(124,58,237,0.18)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    minWidth: '180px'
+                  }}>
+                    <span style={{fontSize:'13px',letterSpacing:'.12em',textTransform:'uppercase',opacity:0.82,marginBottom:2}}>Last Outage</span>
+                    <span style={{fontSize:'clamp(16px,2vw,20px)',fontWeight:700,marginBottom:2}}>
+                      {new Date(lastOutageTs).toLocaleDateString()}
+                    </span>
+                    <span style={{fontSize:'clamp(15px,2vw,18px)',fontWeight:500,opacity:0.92}}>
+                      {new Date(lastOutageTs).toLocaleTimeString()}
+                    </span>
+                    <span style={{fontSize:'13px',marginTop:6,opacity:0.7}}>
+                      {(() => {
+                        const msAgo = now() - lastOutageTs;
+                        if (msAgo < 0 || !Number.isFinite(msAgo)) return "--";
+                        const s = Math.floor(msAgo / 1000);
+                        const days = Math.floor(s / 86400);
+                        const hrs = Math.floor((s % 86400) / 3600);
+                        let str = [];
+                        if (days > 0) str.push(`${days}d`);
+                        if (hrs > 0 || days > 0) str.push(`${hrs}h`);
+                        return str.length ? str.join(' ') + " ago" : "Just now";
+                      })()}
+                    </span>
+                  </div>
+                  {/* Mute button moved to page bottom */}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Center */}
+          <div className="center">
+            <div className="socket" style={{padding:0,margin:0,background:'transparent',border:'none',boxShadow:'none'}}>
+              <button
+                ref={btnRef}
+                className={`btn-wrap ${pressed ? 'btn-press' : 'btn-normal'} ${isDown ? 'button-disabled' : ''}`}
+                onMouseDown={() => { if (!isDown) startPress(); }}
+                onMouseUp={() => { if (!isDown) endPress(); }}
+                onMouseLeave={() => { if (!isDown) endPress(); }}
+                onClick={() => { if (!isDown) handleOutagePress(); }}
+                disabled={isDown}
+                aria-disabled={isDown}
+              >
+                 <div className="btn-shine" style={{opacity: pressed ? 0.15 : 0.35, background:'linear-gradient(to bottom, rgba(255,255,255,0.25), rgba(255,255,255,0))'}}></div>
+                <div
+                  className="btn-cap"
+                  style={{
+                    transform: pressed ? 'translateY(2px) scale(0.985)' : 'translateY(0) scale(1)',
+                    boxShadow: pressed ? 'inset 0 8px 18px rgba(0,0,0,0.35)' : 'inset 0 3px 6px rgba(255,255,255,0.12)'
+                  }}
+                >
+                  <span style={{fontSize:'clamp(24px,4vw,24px)', textAlign:'center', lineHeight:'1.2'}}>BP<br/>WENT<br/>DOWN <br/> !!!</span>
+                </div>
+                <div className="subtext">{buttonSubtexts[subtextIndex]}</div>
+              </button>
+            </div>
+          </div>
+
+          {/* Scoreboard commented out by request */}
+          {false && (
+            <div className="container" style={{paddingBottom:56}}>
+              <div className="card" style={{cursor:'pointer'}} onClick={()=>alert('Open: History & Hall of Fame (trimmed in single-file build)')}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
+                  <div>
+                    <div className="hush">Scoreboard</div>
+                    <div style={{fontSize:18,color:'rgba(0,0,0,.7)'}}>Click to open history & hall of fame</div>
+                  </div>
+                  <div className="score-grid" style={{width:'100%',maxWidth:640}}>
+                    <div className="stat"><div className="lbl">Longest uptime</div><div className="val">{formatDuration(stats.max)}</div></div>
+                    <div className="stat"><div className="lbl">Median uptime</div><div className="val">{formatDuration(stats.median)}</div></div>
+                    <div className="stat"><div className="lbl">Average uptime</div><div className="val">{formatDuration(stats.mean)}</div></div>
+                    <div className="stat"><div className="lbl">Outages logged</div><div className="val">{String(stats.count)}</div></div>
+                  </div>
+                </div>
+                <div className="muter" style={{marginTop:12,color:'rgba(0,0,0,.55)'}}>{quip}</div>
+              </div>
+            </div>
+          )}
+
+          {/* RIP Popup */}
+          {showRIP && (
+            <div className="modal-backdrop popup-enter" onClick={(e) => e.target === e.currentTarget && closeRIP()}>
+              <div className="rip-card">
+                <div style={{fontWeight:800,fontSize:22,marginBottom:12}}>Big Purple is down RIP 💀</div>
+                <div style={{margin:'0 auto',width:320,maxWidth:'100%'}}>
+                  <div className="sys-panel">
+                    <div style={{ fontSize:'48px', marginBottom:'8px' }} aria-hidden="true">💻</div>
+                    <div style={{fontSize:'24px',fontWeight:'bold'}}>SYSTEM DOWN</div>
+                    <div style={{fontSize:'14px',opacity:0.9,marginTop:'8px'}}>
+                      ❌ GPU Queue: OFFLINE<br/>
+                      ❌ Compute Nodes: UNAVAILABLE<br/>
+                      ❌ Your Sanity: NOT FOUND !!!
+                    </div>
+                  </div>
+                </div>
+                <div style={{marginTop:16,textAlign:'center',color:'rgba(0,0,0,.7)',fontStyle:'italic'}}>
+                  {/* style must be an object in JSX */}
+                  {"Tell my jobs… they were "}<span style={{ textDecoration: 'line-through' }}>pending</span>{" loved. — Big Purple"}
+                </div>
+                <div style={{marginTop:20,display:'flex',justifyContent:'center'}}>
+                  <button className="close-btn" onClick={closeRIP}>I'm performative again</button>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* Bottom controls */}
+          <div style={{position:'fixed',bottom:16,left:16,zIndex:80,display:'flex',gap:8}}>
+            <button className="pill" onClick={()=>setIsMuted(m=>!m)}>{isMuted ? "Unmute" : "Mute"}</button>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
