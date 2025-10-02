@@ -20,6 +20,9 @@
     *{box-sizing:border-box} html,body{height:100%}
     body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:var(--text)}
     .page{min-height:100vh;display:flex;flex-direction:column}
+    /* Background video for happy state */
+    .bg-video-wrap{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+    .bg-video{width:100%;height:100%;object-fit:cover;opacity:0.18;filter:saturate(1.05) contrast(1.05)}
     .container{max-width:1100px;margin:0 auto;padding:16px;width:100%}
     .banner{position:sticky;top:0;z-index:50}
     .card{background:rgba(124,58,237,0.10);border:1px solid var(--panel-border);border-radius:16px;padding:16px}
@@ -334,6 +337,14 @@
 
       return (
         <div className={`page ${isDown ? 'down' : ''} ${isDown ? 'stress' : ''}`}>
+          {/* Happy background video (plays only when not down) */}
+          {!isDown && (
+            <div className="bg-video-wrap" aria-hidden>
+              <video className="bg-video" autoplay muted loop playsInline>
+                <source src="happy-cluster.mp4" type="video/mp4" />
+              </video>
+            </div>
+          )}
           {/* Banner */}
           <div className="banner">
             <div className="container">
@@ -377,6 +388,7 @@
                         let str = [];
                         if (days > 0) str.push(`${days}d`);
                         if (hrs > 0 || days > 0) str.push(`${hrs}h`);
+                        if (s < 60) return "Just now";
                         return str.length ? str.join(' ') + " ago" : "Just now";
                       })()}
                     </span>
@@ -441,14 +453,19 @@
             <div className="modal-backdrop popup-enter" onClick={(e) => e.target === e.currentTarget && closeRIP()}>
               <div className="rip-card">
                 <div style={{fontWeight:800,fontSize:22,marginBottom:12}}>Big Purple is down RIP 💀</div>
-                <div style={{margin:'0 auto',width:320,maxWidth:'100%'}}>
-                  <div className="sys-panel">
-                    <div style={{ fontSize:'48px', marginBottom:'8px' }} aria-hidden="true">💻</div>
-                    <div style={{fontSize:'24px',fontWeight:'bold'}}>SYSTEM DOWN</div>
-                    <div style={{fontSize:'14px',opacity:0.9,marginTop:'8px'}}>
-                      ❌ GPU Queue: OFFLINE<br/>
-                      ❌ Compute Nodes: UNAVAILABLE<br/>
-                      ❌ Your Sanity: NOT FOUND !!!
+                <div style={{margin:'0 auto',width:360,maxWidth:'100%'}}>
+                  <div className="sys-panel" style={{padding:0}}>
+                    {/* Down-state video */}
+                    <video width="100%" autoplay muted loop playsInline style={{borderRadius:18, display:'block'}}>
+                      <source src="bp-down.mp4" type="video/mp4" />
+                    </video>
+                    <div style={{padding:'10px 16px'}}>
+                      <div style={{fontSize:'24px',fontWeight:'bold'}}>SYSTEM DOWN</div>
+                      <div style={{fontSize:'14px',opacity:0.9,marginTop:'8px'}}>
+                        ❌ GPU Queue: OFFLINE<br/>
+                        ❌ Compute Nodes: UNAVAILABLE<br/>
+                        ❌ Your Sanity: NOT FOUND !!!
+                      </div>
                     </div>
                   </div>
                 </div>
