@@ -255,7 +255,16 @@
       async function dbMarkDown(startTs){
         if (!supabase) return;
         try {
-          await supabase.from('outages').insert({ started_at: startTs, ended_at: null, uptime_ms: 0 });
+          const startIso = new Date(startTs).toISOString();
+          startedAtIsoRef.current = startIso;
+          const { data: inserted, error: insErr } = await supabase
+            .from('outages')
+            .insert({ started_at: startIso, ended_at: null, uptime_ms: 0 })
+            .select('id')
+            .single();
+          if (!insErr && inserted && inserted.id != null) {
+            pendingOutageIdRef.current = inserted.id;
+          }
         } catch (e) { console.warn('Supabase outages insert error', e); }
         try {
           await supabase.from('status').upsert({ id:1, is_down:true, last_outage_ts:startTs }, { onConflict:'id' });
@@ -266,7 +275,7 @@
       async function dbMarkUp(endTs){
         if (!supabase) return;
         try {
-          await supabase.rpc('close_latest_outage', { p_end_ts: endTs });
+          await supabase.rpc('close_latest_outage', { p_end_ts: new Date(endTs).toISOString() });
         } catch (e) { console.warn('Supabase close_latest_outage error', e); }
         try {
           await supabase.from('status').upsert({ id:1, is_down:false, last_outage_ts:endTs }, { onConflict:'id' });
@@ -356,6 +365,8 @@
       const prevLastOutageTsRef = useRef(null);
       const prevStreaksRef = useRef(null);
       const accidentalStartRef = useRef(null);
+      const pendingOutageIdRef = useRef(null);
+      const startedAtIsoRef = useRef(null);
 
       function chooseNextQuote(){ setSubtextIndex(idx => pickNextIndex(idx, buttonSubtexts.length)); }
 
@@ -444,10 +455,19 @@
         setStreaks(prevList || []);
         persist(prevTs ?? lastOutageTs, prevList || [], false);
         if (supabase) {
-          try { await supabase.from('outages').delete().eq('started_at', startTs).is('ended_at', null); } catch(e){ console.warn('Supabase undo delete outage error', e); }
+          try {
+            if (pendingOutageIdRef.current != null) {
+              await supabase.from('outages').delete().eq('id', pendingOutageIdRef.current);
+            } else if (startedAtIsoRef.current) {
+              await supabase.from('outages').delete().eq('started_at', startedAtIsoRef.current).is('ended_at', null);
+            }
+          } catch(e){ console.warn('Supabase undo delete outage error', e); }
           try { await supabase.from('status').upsert({ id:1, is_down:false, last_outage_ts: prevTs ?? lastOutageTs }, { onConflict:'id' }); } catch(e){ console.warn('Supabase undo status upsert error', e); }
         }
         sendSlackSimple(':warning: False alarm cancelled — metrics preserved.');
+        pendingOutageIdRef.current = null;
+        startedAtIsoRef.current = null;
+        accidentalStartRef.current = null;
       }
 
       // When popup opens or mute state changes, try to play video with sound unless muted
