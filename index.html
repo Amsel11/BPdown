@@ -140,6 +140,18 @@
       const dd = days > 0 ? days + "d " : "";
       return dd + String(hrs).padStart(2,"0") + ":" + String(mins).padStart(2,"0") + ":" + String(secs).padStart(2,"0");
     };
+    const formatDurationLong = (ms) => {
+      if (ms == null || !Number.isFinite(ms) || ms < 0) return "--";
+      const totalMins = Math.floor(ms / 60000);
+      const days = Math.floor(totalMins / 1440);
+      const hours = Math.floor((totalMins % 1440) / 60);
+      const minutes = totalMins % 60;
+      const parts = [];
+      if (days > 0) parts.push(`${days} day${days!==1? 's':''}`);
+      if (hours > 0) parts.push(`${hours} hour${hours!==1? 's':''}`);
+      if (minutes > 0 || parts.length === 0) parts.push(`${minutes} minute${minutes!==1? 's':''}`);
+      return parts.join(" ");
+    };
     const buttonSubtexts = [
       "Click when the cluster faceplants 😵‍💫",
       "The corgies took over",
@@ -165,6 +177,7 @@
         try { const raw = localStorage.getItem(STORAGE_KEYS.streaks); return raw ? JSON.parse(raw) : []; } catch { return []; }
       });
       const [isDown, setIsDown] = useState(false);
+      const [serverLastRunMs, setServerLastRunMs] = useState(null);
 
       const [tick, setTick] = useState(0);
       useEffect(() => {
@@ -193,6 +206,21 @@
       useEffect(() => {
         if (!supabase) return;
         let channel;
+        async function computeServerLastRun(){
+          try{
+            const { data: rows, error } = await supabase
+              .from('outages')
+              .select('started_at, ended_at')
+              .order('started_at', { ascending:false })
+              .limit(2);
+            if (error || !rows || rows.length < 2){ setServerLastRunMs(null); return; }
+            const latest = rows[0];
+            const prev = rows[1];
+            if (!prev || !prev.ended_at){ setServerLastRunMs(null); return; }
+            const ms = Number(new Date(latest.started_at)) - Number(new Date(prev.ended_at));
+            setServerLastRunMs(Number.isFinite(ms) && ms > 0 ? ms : null);
+          }catch{ setServerLastRunMs(null); }
+        }
         (async () => {
           // Ensure singleton status row exists
           const { data, error } = await supabase
@@ -207,6 +235,7 @@
             setLastOutageTs(Number(data.last_outage_ts) || now());
             setShowRIP(Boolean(data.is_down));
           }
+          await computeServerLastRun();
           // Realtime subscription for status changes
           channel = supabase
             .channel('public:status')
@@ -217,6 +246,7 @@
               setLastOutageTs(Number(row.last_outage_ts) || now());
               setShowRIP(Boolean(row.is_down));
             })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'outages' }, () => { computeServerLastRun(); })
             .subscribe();
         })();
         return () => { if (channel) supabase.removeChannel(channel); };
@@ -253,6 +283,12 @@
         const median = arr.length%2 ? arr[mid] : (arr[mid-1]+arr[mid])/2;
         return { max: Math.max(...arr), mean: sum/arr.length, median, count: arr.length };
       }, [streaks]);
+      const lastRunMs = useMemo(() => {
+        if (!streaks || streaks.length === 0) return null;
+        const v = Number(streaks[0]?.uptimeMs);
+        return Number.isFinite(v) && v > 0 ? v : null;
+      }, [streaks]);
+      const effectiveLastRunMs = serverLastRunMs ?? lastRunMs;
 
       function persist(lastTs, list, down = isDown){
         try{
@@ -317,6 +353,9 @@
       const [videoOk, setVideoOk] = useState(true);
       const downVideoRef = useRef(null);
       const btnRef = useRef(null);
+      const prevLastOutageTsRef = useRef(null);
+      const prevStreaksRef = useRef(null);
+      const accidentalStartRef = useRef(null);
 
       function chooseNextQuote(){ setSubtextIndex(idx => pickNextIndex(idx, buttonSubtexts.length)); }
 
@@ -335,6 +374,32 @@
         requestAnimationFrame(step);
       }
 
+      // Global keyboard: Enter triggers the outage button anywhere; Space disabled on button only
+      useEffect(() => {
+        if (showRIP) return; // don't allow triggering while popup is open
+        const isTypingTarget = (el) => {
+          if (!el) return false;
+          const tag = el.tagName;
+          return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+        };
+        const onKeyDown = (e) => {
+          if (isDown) return;
+          if (isTypingTarget(e.target)) return;
+          if (e.key === 'Enter') { e.preventDefault(); startPress(); }
+        };
+        const onKeyUp = (e) => {
+          if (isDown) return;
+          if (isTypingTarget(e.target)) return;
+          if (e.key === 'Enter') { e.preventDefault(); endPress(); handleOutagePress(); }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
+        return () => {
+          window.removeEventListener('keydown', onKeyDown);
+          window.removeEventListener('keyup', onKeyUp);
+        };
+      }, [isDown, showRIP]);
+
       function spawnRipple(){
         const host = btnRef.current;
         if (!host) return;
@@ -348,6 +413,9 @@
         if (isDown) return;
         spawnRipple();
         const t = now();
+        prevLastOutageTsRef.current = lastOutageTs;
+        prevStreaksRef.current = streaks;
+        accidentalStartRef.current = t;
         const uptimeMs = t - lastOutageTs;
         const newEntry = { startedAt:lastOutageTs, endedAt:t, uptimeMs };
         const next = [newEntry, ...(streaks||[])].slice(0,1000);
@@ -363,6 +431,23 @@
         setLastOutageTs(t);
         persist(t, streaks, false);
         dbMarkUp(t);
+      }
+
+      async function undoAccident(){
+        // Revert local state and remote records for a false alarm
+        const prevTs = prevLastOutageTsRef.current;
+        const prevList = Array.isArray(prevStreaksRef.current) ? prevStreaksRef.current : streaks;
+        const startTs = accidentalStartRef.current;
+        setShowRIP(false);
+        setIsDown(false);
+        if (prevTs != null) setLastOutageTs(prevTs);
+        setStreaks(prevList || []);
+        persist(prevTs ?? lastOutageTs, prevList || [], false);
+        if (supabase) {
+          try { await supabase.from('outages').delete().eq('started_at', startTs).is('ended_at', null); } catch(e){ console.warn('Supabase undo delete outage error', e); }
+          try { await supabase.from('status').upsert({ id:1, is_down:false, last_outage_ts: prevTs ?? lastOutageTs }, { onConflict:'id' }); } catch(e){ console.warn('Supabase undo status upsert error', e); }
+        }
+        sendSlackSimple(':warning: False alarm cancelled — metrics preserved.');
       }
 
       // When popup opens or mute state changes, try to play video with sound unless muted
@@ -452,6 +537,10 @@
                     <span style={{fontSize:'clamp(15px,2vw,18px)',fontWeight:500,opacity:0.92}}>
                       {new Date(lastOutageTs).toLocaleTimeString()}
                     </span>
+                    <span style={{fontSize:'12px',marginTop:6,opacity:0.85,display:'block',textTransform:'uppercase',letterSpacing:'.12em'}}>Last run</span>
+                    <span style={{fontSize:'clamp(14px,2vw,16px)',fontWeight:600}}>
+                      {effectiveLastRunMs == null ? '—' : formatDurationLong(effectiveLastRunMs)}
+                    </span>
                     <span style={{fontSize:'13px',marginTop:6,opacity:0.7}}>
                       {(() => {
                         const msAgo = now() - lastOutageTs;
@@ -483,6 +572,8 @@
                 onMouseUp={() => { if (!isDown) endPress(); }}
                 onMouseLeave={() => { if (!isDown) endPress(); }}
                 onClick={() => { if (!isDown) handleOutagePress(); }}
+                onKeyDown={(e) => { if (e.key === ' ' || e.code === 'Space' || e.key === 'Spacebar') { e.preventDefault(); } }}
+                onKeyUp={(e) => { if (e.key === ' ' || e.code === 'Space' || e.key === 'Spacebar') { e.preventDefault(); } }}
                 disabled={isDown}
                 aria-disabled={isDown}
               >
@@ -551,8 +642,9 @@
                   {/* style must be an object in JSX */}
                   {"Tell my jobs… they were "}<span style={{ textDecoration: 'line-through' }}>pending</span>{" loved. — Big Purple"}
                 </div>
-                <div style={{marginTop:20,display:'flex',justifyContent:'center'}}>
+                <div style={{marginTop:20,display:'flex',flexDirection:'column',alignItems:'center',gap:8}}>
                   <button className="close-btn" onClick={closeRIP}>I'm performative again</button>
+                  <button className="close-btn" style={{background:'rgba(255,255,255,0.95)',color:'var(--text)'}} onClick={undoAccident}>Accident — don't reset</button>
                 </div>
               </div>
             </div>
