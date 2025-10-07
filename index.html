@@ -252,6 +252,31 @@
         return () => { if (channel) supabase.removeChannel(channel); };
       }, []);
 
+      // Fallback polling: keep clients in sync even if Realtime isn't firing
+      useEffect(() => {
+        if (!supabase) return;
+        let cancelled = false;
+        async function fetchStatus(){
+          try{
+            const { data } = await supabase
+              .from('status')
+              .select('*')
+              .eq('id', 1)
+              .single();
+            if (!cancelled && data){
+              setIsDown(Boolean(data.is_down));
+              setLastOutageTs(Number(data.last_outage_ts) || now());
+              setShowRIP(Boolean(data.is_down));
+            }
+          }catch{}
+        }
+        const poll = () => { if (document.visibilityState === 'visible') fetchStatus(); };
+        const id = setInterval(poll, 5000);
+        // also do an immediate sync on mount
+        poll();
+        return () => { cancelled = true; clearInterval(id); };
+      }, []);
+
       async function dbMarkDown(startTs){
         if (!supabase) return;
         try {
