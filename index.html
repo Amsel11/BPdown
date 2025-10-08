@@ -418,21 +418,38 @@
 
       // Global keyboard: Enter triggers the outage button anywhere; Space disabled on button only
       useEffect(() => {
-        if (showRIP) return; // don't allow triggering while popup is open
         const isTypingTarget = (el) => {
           if (!el) return false;
           const tag = el.tagName;
           return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
         };
         const onKeyDown = (e) => {
-          if (isDown) return;
           if (isTypingTarget(e.target)) return;
-          if (e.key === 'Enter') { e.preventDefault(); startPress(); }
+          if (e.key === 'Enter') { 
+            e.preventDefault(); 
+            if (isDown) {
+              // When down, just trigger stress animation again
+              const page = document.querySelector('.page');
+              if (page) {
+                page.classList.remove('stress');
+                // Force reflow
+                page.offsetHeight;
+                page.classList.add('stress');
+              }
+            } else {
+              startPress(); 
+            }
+          }
         };
         const onKeyUp = (e) => {
-          if (isDown) return;
           if (isTypingTarget(e.target)) return;
-          if (e.key === 'Enter') { e.preventDefault(); endPress(); handleOutagePress(); }
+          if (e.key === 'Enter') { 
+            e.preventDefault(); 
+            if (!isDown) {
+              endPress(); 
+              handleOutagePress(); 
+            }
+          }
         };
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
