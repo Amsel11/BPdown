@@ -115,8 +115,8 @@
   <script type="text/babel" data-presets="env,react">
     const { useState, useEffect, useMemo, useRef } = React;
     // Supabase client (set your values below)
-    const SUPABASE_URL = 'https://ubjtolpbcxkcjazxvchd.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVianRvbHBiY3hrY2phenh2Y2hkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0MTc3NzMsImV4cCI6MjA3NDk5Mzc3M30.NpjH91gCRSx8z17xY5bE4zYhlkKYWBAJkHi3q1FYRpw';
+    const SUPABASE_URL = 'https://kizmpecnfzbjwkpwrttg.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtpem1wZWNuZnpiandrcHdydHRnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5NDAwOTgsImV4cCI6MjA3NTUxNjA5OH0.RQfXuzOCzFIK_YghjWhvn-eINzPzscH0EbiLdV1RmNw';
     // OPTIONAL: Slack Incoming Webhook URL (for quick prototype). Replace with your real webhook URL.
     // Note: Putting this in a public page exposes the URL; rotate it later or move to a serverless function.
     const SLACK_WEBHOOK_URL = '';
@@ -208,16 +208,23 @@
         let channel;
         async function computeServerLastRun(){
           try{
-            const { data: rows, error } = await supabase
+            const { data: latestStart, error: e1 } = await supabase
               .from('outages')
-              .select('started_at, ended_at')
+              .select('started_at')
               .order('started_at', { ascending:false })
-              .limit(2);
-            if (error || !rows || rows.length < 2){ setServerLastRunMs(null); return; }
-            const latest = rows[0];
-            const prev = rows[1];
-            if (!prev || !prev.ended_at){ setServerLastRunMs(null); return; }
-            const ms = Number(new Date(latest.started_at)) - Number(new Date(prev.ended_at));
+              .limit(1)
+              .single();
+            const { data: latestEnded, error: e2 } = await supabase
+              .from('outages')
+              .select('ended_at')
+              .gt('ended_at', 0)
+              .order('ended_at', { ascending:false })
+              .limit(1)
+              .single();
+            if (e1 || e2 || !latestStart || !latestEnded){ setServerLastRunMs(null); return; }
+            const startMs = Number(latestStart.started_at);
+            const endedMs = Number(latestEnded.ended_at);
+            const ms = startMs - endedMs;
             setServerLastRunMs(Number.isFinite(ms) && ms > 0 ? ms : null);
           }catch{ setServerLastRunMs(null); }
         }
@@ -267,24 +274,23 @@
               setIsDown(Boolean(data.is_down));
               setLastOutageTs(Number(data.last_outage_ts) || now());
               setShowRIP(Boolean(data.is_down));
+            } else if (!cancelled) {
+              console.warn('Polling: no status row found');
             }
-          }catch{}
+          }catch(e){ console.warn('Polling fetchStatus error', e); }
         }
-        const poll = () => { if (document.visibilityState === 'visible') fetchStatus(); };
-        const id = setInterval(poll, 5000);
-        // also do an immediate sync on mount
-        poll();
+        const id = setInterval(fetchStatus, 1000);
+        // immediate sync on mount
+        fetchStatus();
         return () => { cancelled = true; clearInterval(id); };
       }, []);
 
       async function dbMarkDown(startTs){
         if (!supabase) return;
         try {
-          const startIso = new Date(startTs).toISOString();
-          startedAtIsoRef.current = startIso;
           const { data: inserted, error: insErr } = await supabase
             .from('outages')
-            .insert({ started_at: startIso, ended_at: null, uptime_ms: 0 })
+            .insert({ started_at: startTs, ended_at: null, uptime_ms: 0 })
             .select('id')
             .single();
           if (!insErr && inserted && inserted.id != null) {
@@ -300,7 +306,7 @@
       async function dbMarkUp(endTs){
         if (!supabase) return;
         try {
-          await supabase.rpc('close_latest_outage', { p_end_ts: new Date(endTs).toISOString() });
+          await supabase.rpc('close_latest_outage', { p_end_ts: endTs });
         } catch (e) { console.warn('Supabase close_latest_outage error', e); }
         try {
           await supabase.from('status').upsert({ id:1, is_down:false, last_outage_ts:endTs }, { onConflict:'id' });
@@ -483,11 +489,11 @@
           try {
             if (pendingOutageIdRef.current != null) {
               await supabase.from('outages').delete().eq('id', pendingOutageIdRef.current);
-            } else if (startedAtIsoRef.current) {
-              await supabase.from('outages').delete().eq('started_at', startedAtIsoRef.current).is('ended_at', null);
+            } else if (startTs != null) {
+              await supabase.from('outages').delete().eq('started_at', startTs).is('ended_at', null);
             }
           } catch(e){ console.warn('Supabase undo delete outage error', e); }
-          try { await supabase.from('status').upsert({ id:1, is_down:false, last_outage_ts: prevTs ?? lastOutageTs }, { onConflict:'id' }); } catch(e){ console.warn('Supabase undo status upsert error', e); }
+          try { await supabase.from('status').upsert({ id:1, is_down:false, last_outage_ts: (prevTs ?? lastOutageTs) }, { onConflict:'id' }); } catch(e){ console.warn('Supabase undo status upsert error', e); }
         }
         sendSlackSimple(':warning: False alarm cancelled — metrics preserved.');
         pendingOutageIdRef.current = null;
