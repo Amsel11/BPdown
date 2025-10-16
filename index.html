@@ -7,19 +7,22 @@
   <meta name="description" content="Big Purple outage funboard" />
   <style>
     :root{
-      --bg:#c8a8e9;
-      --panel:rgba(255,255,255,0.15);
-      --panel-border:rgba(255,255,255,0.25);
+      --bg:#c8a8e9; /* The background colour of the page */
+      --panel:rgba(255,255,255,0.15); /* Panel is the background color of the card */
+      --panel-border:rgba(255,255,255,0.25); /* Semi transparant card in the background is the colour of the card  */
       --text:#2d1b69; --muted:rgba(45,27,105,0.8); --muter:rgba(45,27,105,0.7);
-      --purple-600:#7c3aed;
-      --socket-glow-1:rgba(168,85,247,0.6);
-      --socket-glow-2:rgba(168,85,247,0.28);
-      --socket-glow-3:rgba(168,85,247,0.45);
-      --socket-glow-4:rgba(168,85,247,0.25);
-    }
-    *{box-sizing:border-box} html,body{height:100%}
+      --purple-600:#7c3aed; /* The colour of the button (PURPLE)*/
+      --socket-glow-1:rgba(168,85,247,0.6); /* The glow of the button when it is pressed */
+      --socket-glow-2:rgba(168,85,247,0.28); /* The glow of the button when it is not pressed */
+      --socket-glow-3:rgba(168, 37, 37, 0.85); /* The glow of the button when it is pressed */
+      --socket-glow-4:rgba(151, 30, 30, 0.55); /* The glow of the button when it is not pressed */
+      --stress-duration: 2s;
+    } /* The glow of the button when it is not pressed */
+    *{box-sizing:border-box} html,body{height:100%} 
+    /* The body is the background colour of the page */
     body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:var(--text)}
     .page{min-height:100vh;display:flex;flex-direction:column}
+
     /* ASCII background animation (happy state) */
     .ascii-bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;opacity:0.2}
     .ascii-tiles{position:absolute;inset:-10%;display:grid;grid-template-columns:repeat(6, minmax(220px, 1fr));gap:32px;transform:scale(1.05)}
@@ -28,20 +31,39 @@
     .ascii-tile:nth-child(4n){animation-duration:2.9s}
     .ascii-tile:nth-child(5n){animation-duration:4.2s}
     @keyframes dance{0%{transform:translateY(0) rotate(0)}50%{transform:translateY(6px) rotate(0.3deg)}100%{transform:translateY(0) rotate(0)}}
-    .container{max-width:1100px;margin:0 auto;padding:16px;width:100%}
+
+    /* Broken ASCII background animation (down state) */
+    .ascii-broken{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;opacity:0.15}
+    .ascii-broken-tiles{position:absolute;inset:-10%;display:grid;grid-template-columns:repeat(6, minmax(220px, 1fr));gap:32px;transform:scale(1.05)}
+    .ascii-broken-tile{margin:0;white-space:pre;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:12px;line-height:12px;color:rgb(255, 241, 164);animation:brokenDance 2.8s ease-in-out infinite}
+    .ascii-broken-tile:nth-child(3n){animation-duration:3.2s}
+    .ascii-broken-tile:nth-child(4n){animation-duration:2.1s}
+    .ascii-broken-tile:nth-child(5n){animation-duration:3.6s}
+    @keyframes brokenDance{0%{transform:translateY(0) rotate(0) scale(1)}25%{transform:translateY(-3px) rotate(-1deg) scale(0.98)}50%{transform:translateY(2px) rotate(1deg) scale(1.02)}75%{transform:translateY(-1px) rotate(-0.5deg) scale(0.99)}100%{transform:translateY(0) rotate(0) scale(1)}}
+    .container{max-width:clamp(320px, 100vw, 1100px);margin:0 auto;padding:16px;width:100%}
     .banner{position:sticky;top:0;z-index:50}
-    .card{background:rgba(124,58,237,0.10);border:1px solid var(--panel-border);border-radius:16px;padding:16px}
+    .card{background:rgba(124,58,237,0.10);border:1px solid var(--panel-border);border-radius:16px;padding:clamp(12px, 2vw, 1px)}
     .hush{color:var(--muted);font-size:12px;letter-spacing:.18em;text-transform:uppercase}
     .time{font-weight:800;font-variant-numeric:tabular-nums;font-size:clamp(28px,5vw,56px)}
     .muted{color:var(--muted);font-size:14px}
     .pill{background:rgba(255,255,255,0.08);border:1px solid var(--panel-border);border-radius:9999px;padding:6px 10px;font-size:12px;cursor:pointer}
-    .center{flex:1;display:flex;align-items:center;justify-content:center;padding:0;background:transparent;border:0;box-shadow:none}
+    .center{position:fixed;
+            top:calc(50vh + clamp(60px, 8vh, 120px)); /* The position of the button in relation to the container*/
+            left:50%;transform:translate(-50%,-50%);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            padding:0;background:transparent;border:0;box-shadow:none;z-index:10}
+            
     .socket{position:relative;background:transparent;border:none;box-shadow:none}
 
     /* --- Giant button --- */
     .btn-wrap{position:relative;outline:none;border:none;background:transparent;padding:0;box-shadow:none;transition:all .15s cubic-bezier(.4,0,.2,1);border-radius:50%}
     .btn-cap{
-      border-radius:50%;width:300px;height:300px;display:flex;align-items:center;justify-content:center;
+      border-radius:50%;
+      width: clamp(200px, 20vw, 400px); 
+      height: clamp(200px, 20vw, 400px);
+      display:flex;align-items:center;justify-content:center;
       background:rgba(124,58,237,0.78);border:1px solid rgba(255,255,255,0.3);
       color:white;font-weight:900;letter-spacing:.02em;box-shadow:inset 0 3px 6px rgba(255,255,255,0.2);
       position:relative;transform:translateY(0) scale(1);transition:all .15s cubic-bezier(.4,0,.2,1);
@@ -49,23 +71,15 @@
     .btn-shine{position:absolute;inset:-3px;border-radius:50%;background:linear-gradient(to bottom,rgba(255,255,255,0.25),transparent);pointer-events:none;transition:opacity .12s ease}
     .subtext{position:absolute;left:50%;transform:translateX(-50%);bottom:-36px;color:var(--muted);font-size:14px;white-space:nowrap}
     .button-disabled{cursor:not-allowed}
-    .btn-press{transform:translateY(28px) scale(0.985);box-shadow:0 0 28px var(--socket-glow-3), 0 0 80px var(--socket-glow-4) !important}
-    .btn-normal{transform:translateY(0) scale(1);box-shadow:0 0 44px var(--socket-glow-1), 0 0 140px var(--socket-glow-2)}
+    .btn-press{transform:translateY(28px) scale(0.985);box-shadow:0 0 28px var(--socket-glow-3), 0 0 80px var(--socket-glow-4) !important} /* The glow of the button when it is pressed */
+    .btn-normal{transform:translateY(0) scale(1);box-shadow:0 0 44px var(--socket-glow-1), 0 0 140px var(--socket-glow-2)} /* The glow of the button when it is not pressed */
 
     /* Idle breathing (off while pressed/disabled) */
     @keyframes breathe { 0%{transform:translateY(0) scale(1)} 50%{transform:translateY(0) scale(1.015)} 100%{transform:translateY(0) scale(1)} }
-    .btn-wrap:not(.btn-press):not(.button-disabled) .btn-cap{ animation:breathe 2.4s ease-in-out infinite; }
+    .btn-wrap:not(.btn-press):not(.button-disabled) .btn-cap{ animation:breathe 2.4s ease-in-out infinite; } /* The breathing animation of the button if it is not pressed and not disabled */
 
-    /* Click ripple (centered burst) */
-    .ripple{
-      position:absolute; left:50%; top:50%; width:18px; height:18px; border-radius:9999px; pointer-events:none;
-      background:rgba(124,58,237,.55); transform:translate(-50%,-50%) scale(.2); filter:blur(0.5px);
-      animation:ripple 600ms ease-out forwards;
-    }
-    @keyframes ripple{ to{opacity:0; transform:translate(-50%,-50%) scale(6)} }
-
-    /* Popup + wobble */
-    .popup-enter{animation:popupEnter .32s cubic-bezier(.4,0,.2,1)}
+    /* Popup + wobble probably invisible but et's */
+    .popup-enter{animation:popupEnter 1.32s cubic-bezier(.4,0,.2,1)}
     @keyframes popupEnter{from{opacity:0;transform:scale(.95) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
     @keyframes wobble{0%{transform:rotate(-2deg) translateY(0)}50%{transform:rotate(2deg) translateY(2px)}100%{transform:rotate(-2deg) translateY(0)}}
 
@@ -84,8 +98,8 @@
 
     /* Stress animation for the whole board when down */
     .stress {
-      animation: stressShake 0.1s ease-in-out 0s 20;
-      /* 0.1s * 50 = 5s total duration, then animation stops */
+      animation: stressShake 0.2s ease-in-out 0s 20;
+      /* 0.1s * 20 = 2s total duration, then animation stops */
     }
     @keyframes stressShake{
       0%{ transform:translate(0,0) rotate(0deg) }
@@ -98,8 +112,14 @@
     }
     /* Darken background during stress, keep darker after */
     .page{ transition: background .25s ease }
-    .page.down{ background:#b39aef }
-    .page.down.stress{ background:#9f79e6 }
+    .page.down{ 
+      background: #9f79e6; 
+      transition: background 1.5s ease-out; /* Slow fade out */
+    }
+    .page.down.stress{ 
+      background:#201225;
+      transition: background .1s ease-in; /* Fast fade in */
+    }
   </style>
 </head>
 <body>
@@ -130,6 +150,15 @@
       isDown: "bp_is_down",
     };
     const now = () => Date.now();
+    const getStressDuration = () => {
+      // Try to get the CSS variable from the document root
+      const root = document.documentElement;
+      const duration = getComputedStyle(root).getPropertyValue('--stress-duration');
+      if (duration && duration !== '') {
+        return parseFloat(duration) * 1000;
+      }
+      return 2000; // Fallback to 2 seconds
+    };
     const formatDuration = (ms) => {
       if (ms < 0 || !Number.isFinite(ms)) return "--";
       const s = Math.floor(ms / 1000);
@@ -189,8 +218,9 @@
       const elapsedSinceOutage = useMemo(() => (now() - lastOutageTs), [lastOutageTs, tick]);
       const daysSinceLastIssue = useMemo(() => (
         isDown ? 0 : Math.max(0, Math.floor((now() - lastOutageTs) / 86400000))
-      ), [isDown, lastOutageTs, tick]);
+      ), [isDown, lastOutageTs, tick]); 
 
+      // SLACK INTEGRATION THAT I STILL NEED TO WORK ON   
       async function sendSlackSimple(text){
         if (!SLACK_WEBHOOK_URL || !SLACK_WEBHOOK_URL.startsWith('https://hooks.slack.com/')) return;
         try{
@@ -339,7 +369,7 @@
       }
 
       // sound
-      const [isMuted, setIsMuted] = useState(false);
+      const [isMuted, setIsMuted] = useState(true); /* The sound of the button when it is not pressed. Default is muted. */
       const audioCtxRef = useRef(null);
       function ensureCtx(){
         if(!audioCtxRef.current){
@@ -390,6 +420,7 @@
       const pressTimer = useRef(null);
       const [subtextIndex, setSubtextIndex] = useState(0);
       const [showRIP, setShowRIP] = useState(false);
+      const [isStressed, setIsStressed] = useState(false);
       const [videoOk, setVideoOk] = useState(true);
       const downVideoRef = useRef(null);
       const btnRef = useRef(null);
@@ -428,14 +459,8 @@
           if (e.key === 'Enter') { 
             e.preventDefault(); 
             if (isDown) {
-              // When down, just trigger stress animation again
-              const page = document.querySelector('.page');
-              if (page) {
-                page.classList.remove('stress');
-                // Force reflow
-                page.offsetHeight;
-                page.classList.add('stress');
-              }
+              setIsStressed(true);
+              setTimeout(() => setIsStressed(false), getStressDuration());
             } else {
               startPress(); 
             }
@@ -479,6 +504,8 @@
         const newEntry = { startedAt:lastOutageTs, endedAt:t, uptimeMs };
         const next = [newEntry, ...(streaks||[])].slice(0,1000);
         setStreaks(next); setLastOutageTs(t); setShowRIP(true); setIsDown(true);
+        setIsStressed(true);
+        setTimeout(() => setIsStressed(false), getStressDuration());
         playFlatline();
         persist(t, next, true);
         dbMarkDown(t);
@@ -551,7 +578,7 @@
       const quip = useMemo(()=>quips[Math.floor(Math.random()*quips.length)], [tick%60]);
 
       return (
-        <div className={`page ${isDown ? 'down' : ''} ${isDown ? 'stress' : ''}`}>
+        <div className={`page ${isDown ? 'down' : ''} ${isStressed ? 'stress' : ''}`}>
           {/* Happy ASCII background when not down (light, looping) */}
           {!isDown && (
             <div className="ascii-bg" aria-hidden>
@@ -572,6 +599,28 @@
               </div>
             </div>
           )}
+          
+          {/* Broken ASCII background when down (dark, glitchy) */}
+          {isDown && (
+            <div className="ascii-broken" aria-hidden>
+              <div className="ascii-broken-tiles">
+                {Array.from({length:48}).map((_,i)=> (
+                  <pre key={i} className="ascii-broken-tile">{`
+  ____________      ____________
+ |  Node ${String.fromCharCode(65+(i%26))}   |_____/   Node ${String.fromCharCode(66+(i%26))}   |
+ |  [XX]  :(|     |   [XX]  :( |
+ |__________|     |_____________|
+     |   |             |   |
+  ___|___|___      ____|___|____
+ |  STORAGE  |-->  |  SCHEDULER  |
+ |  [FAIL]   |     |   [FAIL]    |
+ |___________|     |_____________|
+`}</pre>
+                ))}
+              </div>
+            </div>
+          )}
+          
           {/* Banner */}
           <div className="banner">
             <div className="container">
