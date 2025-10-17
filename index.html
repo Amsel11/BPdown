@@ -347,8 +347,11 @@
           } else {
             console.log('Initial sync: setting isDown to', Boolean(data.is_down));
             setIsDown(Boolean(data.is_down));
-            setLastOutageTs(Number(data.last_outage_ts) || now());
+            // Use the timestamp from the database for synchronization
+            const dbTimestamp = Number(data.last_outage_ts) || now();
+            setLastOutageTs(dbTimestamp);
             setShowRIP(Boolean(data.is_down));
+            console.log('Initial sync - Using database timestamp:', dbTimestamp, 'Local time:', now());
           }
           await computeServerLastRun();
           // Realtime subscription for status changes
@@ -364,10 +367,20 @@
                 return;
               }
               
+              // Debug: log the sync decision
+              console.log('Real-time sync decision:', {
+                ignoreRealtimeSync: ignoreRealtimeSyncRef.current,
+                rowIsDown: Boolean(row.is_down),
+                willUpdate: !(ignoreRealtimeSyncRef.current && !Boolean(row.is_down))
+              });
+              
               console.log('Real-time sync: setting isDown to', Boolean(row.is_down));
               setIsDown(Boolean(row.is_down));
-              setLastOutageTs(Number(row.last_outage_ts) || now());
+              // Use the timestamp from the database for synchronization
+              const dbTimestamp = Number(row.last_outage_ts) || now();
+              setLastOutageTs(dbTimestamp);
               setShowRIP(Boolean(row.is_down));
+              console.log('Using database timestamp:', dbTimestamp, 'Local time:', now());
               
               // If this is a global outage update, clear the local outage flag
               if (Boolean(row.is_down) && ignoreRealtimeSyncRef.current) {
@@ -421,8 +434,11 @@
               
               console.log('Polling sync: setting isDown to', Boolean(data.is_down));
               setIsDown(Boolean(data.is_down));
-              setLastOutageTs(Number(data.last_outage_ts) || now());
+              // Use the timestamp from the database for synchronization
+              const dbTimestamp = Number(data.last_outage_ts) || now();
+              setLastOutageTs(dbTimestamp);
               setShowRIP(Boolean(data.is_down));
+              console.log('Polling - Using database timestamp:', dbTimestamp, 'Local time:', now());
               
               // If this is a global outage update, clear the local outage flag
               if (Boolean(data.is_down) && ignoreRealtimeSyncRef.current) {
@@ -654,13 +670,14 @@
         
         if (shouldGoGlobal) {
           // Global outage - affects everyone and sends Slack notification
-          console.log('Making outage global');
+          console.log('Making outage global - timestamp:', t);
           setIsLocalOutage(false);
           setIgnoreRealtimeSync(false); // Allow real-time sync for global outages
+          ignoreRealtimeSyncRef.current = false; // Reset ref immediately
           dbMarkDown(t);
         } else {
           // Local outage - only affects this user, no Slack notification
-          console.log('Keeping outage local - waiting for more votes');
+          console.log('Keeping outage local - waiting for more votes - timestamp:', t);
           setIsLocalOutage(true);
           setIgnoreRealtimeSync(true); // Prevent real-time sync from overriding local outage
           ignoreRealtimeSyncRef.current = true; // Set ref immediately
