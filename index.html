@@ -215,6 +215,27 @@
         return false;
       }
     }
+
+    async function clearAllVotes() {
+      if (!supabase) {
+        console.log('No Supabase connection - cannot clear votes');
+        return;
+      }
+      try {
+        console.log('Clearing all votes from database');
+        const { error } = await supabase
+          .from('outage_votes')
+          .delete()
+          .neq('id', 0); // Delete all rows (id is never 0)
+        if (error) {
+          console.error('Error clearing votes:', error);
+        } else {
+          console.log('Successfully cleared all votes');
+        }
+      } catch (e) {
+        console.error('Vote clearing error', e);
+      }
+    }
     const formatDuration = (ms) => {
       if (ms < 0 || !Number.isFinite(ms)) return "--";
       const s = Math.floor(ms / 1000);
@@ -642,6 +663,8 @@
         setLastOutageTs(t);
         persist(t, streaks, false);
         dbMarkUp(t);
+        // Clear all votes when outage is acknowledged
+        clearAllVotes();
       }
 
       async function undoAccident(){
@@ -654,6 +677,8 @@
         if (prevTs != null) setLastOutageTs(prevTs);
         setStreaks(prevList || []);
         persist(prevTs ?? lastOutageTs, prevList || [], false);
+        // Clear all votes when accident is undone
+        clearAllVotes();
         if (supabase) {
           try {
             if (pendingOutageIdRef.current != null) {
