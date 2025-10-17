@@ -358,9 +358,9 @@
               const row = payload.new || payload.old;
               if (!row) return;
               
-              // Don't override local outages with real-time sync
-              if (ignoreRealtimeSyncRef.current) {
-                console.log('Ignoring real-time sync - local outage in progress');
+              // Don't override local outages with real-time sync, UNLESS it's becoming global
+              if (ignoreRealtimeSyncRef.current && !Boolean(row.is_down)) {
+                console.log('Ignoring real-time sync - local outage in progress and not becoming global');
                 return;
               }
               
@@ -368,6 +368,14 @@
               setIsDown(Boolean(row.is_down));
               setLastOutageTs(Number(row.last_outage_ts) || now());
               setShowRIP(Boolean(row.is_down));
+              
+              // If this is a global outage update, clear the local outage flag
+              if (Boolean(row.is_down) && ignoreRealtimeSyncRef.current) {
+                console.log('Global outage detected - clearing local outage flag');
+                setIsLocalOutage(false);
+                setIgnoreRealtimeSync(false);
+                ignoreRealtimeSyncRef.current = false;
+              }
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'outages' }, () => { computeServerLastRun(); })
             .subscribe();
@@ -405,9 +413,9 @@
               .eq('id', 1)
               .single();
             if (!cancelled && data){
-              // Don't override local outages with polling
-              if (ignoreRealtimeSyncRef.current) {
-                console.log('Ignoring polling sync - local outage in progress');
+              // Don't override local outages with polling, UNLESS it's becoming global
+              if (ignoreRealtimeSyncRef.current && !Boolean(data.is_down)) {
+                console.log('Ignoring polling sync - local outage in progress and not becoming global');
                 return;
               }
               
@@ -415,6 +423,14 @@
               setIsDown(Boolean(data.is_down));
               setLastOutageTs(Number(data.last_outage_ts) || now());
               setShowRIP(Boolean(data.is_down));
+              
+              // If this is a global outage update, clear the local outage flag
+              if (Boolean(data.is_down) && ignoreRealtimeSyncRef.current) {
+                console.log('Global outage detected via polling - clearing local outage flag');
+                setIsLocalOutage(false);
+                setIgnoreRealtimeSync(false);
+                ignoreRealtimeSyncRef.current = false;
+              }
             } else if (!cancelled) {
               console.warn('Polling: no status row found');
             }
