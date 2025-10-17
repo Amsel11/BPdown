@@ -176,26 +176,42 @@
     
     // Check if we have enough votes to make outage global
     async function checkVoteThreshold(userId, timestamp) {
-      if (!supabase) return false;
+      if (!supabase) {
+        console.log('No Supabase connection - treating as local outage');
+        return false;
+      }
       
       try {
+        console.log('Adding vote for user:', userId);
+        
         // Add this user's vote
-        await supabase.from('outage_votes').insert({
+        const { error: insertError } = await supabase.from('outage_votes').insert({
           user_id: userId,
           created_at: new Date(timestamp).toISOString(),
           expires_at: new Date(timestamp + VOTE_WINDOW_MS).toISOString()
         });
         
+        if (insertError) {
+          console.error('Error inserting vote:', insertError);
+          return false;
+        }
+        
         // Count votes in the last 10 minutes
-        const { data: votes } = await supabase
+        const { data: votes, error: selectError } = await supabase
           .from('outage_votes')
           .select('*')
           .gte('created_at', new Date(timestamp - VOTE_WINDOW_MS).toISOString())
           .lte('expires_at', new Date(timestamp + VOTE_WINDOW_MS).toISOString());
         
+        if (selectError) {
+          console.error('Error selecting votes:', selectError);
+          return false;
+        }
+        
+        console.log('Current votes:', votes ? votes.length : 0, 'Threshold:', VOTE_THRESHOLD);
         return votes && votes.length >= VOTE_THRESHOLD;
       } catch (e) {
-        console.warn('Vote check error', e);
+        console.error('Vote check error', e);
         return false;
       }
     }
@@ -308,6 +324,7 @@
           if (!data) {
             await supabase.from('status').upsert({ id: 1, is_down: false, last_outage_ts: now() }, { onConflict: 'id' });
           } else {
+            console.log('Initial sync: setting isDown to', Boolean(data.is_down));
             setIsDown(Boolean(data.is_down));
             setLastOutageTs(Number(data.last_outage_ts) || now());
             setShowRIP(Boolean(data.is_down));
@@ -319,6 +336,14 @@
             .on('postgres_changes', { event: '*', schema: 'public', table: 'status', filter: 'id=eq.1' }, (payload) => {
               const row = payload.new || payload.old;
               if (!row) return;
+              
+              // Don't override local outages with real-time sync
+              if (ignoreRealtimeSyncRef.current) {
+                console.log('Ignoring real-time sync - local outage in progress');
+                return;
+              }
+              
+              console.log('Real-time sync: setting isDown to', Boolean(row.is_down));
               setIsDown(Boolean(row.is_down));
               setLastOutageTs(Number(row.last_outage_ts) || now());
               setShowRIP(Boolean(row.is_down));
@@ -359,6 +384,13 @@
               .eq('id', 1)
               .single();
             if (!cancelled && data){
+              // Don't override local outages with polling
+              if (ignoreRealtimeSyncRef.current) {
+                console.log('Ignoring polling sync - local outage in progress');
+                return;
+              }
+              
+              console.log('Polling sync: setting isDown to', Boolean(data.is_down));
               setIsDown(Boolean(data.is_down));
               setLastOutageTs(Number(data.last_outage_ts) || now());
               setShowRIP(Boolean(data.is_down));
@@ -367,7 +399,7 @@
             }
           }catch(e){ console.warn('Polling fetchStatus error', e); }
         }
-        const id = setInterval(fetchStatus, 1000);
+        const id = setInterval(fetchStatus, 5000); // Reduce polling frequency
         // immediate sync on mount
         fetchStatus();
         return () => { cancelled = true; clearInterval(id); };
@@ -480,6 +512,8 @@
       const [showRIP, setShowRIP] = useState(false);
       const [isStressed, setIsStressed] = useState(false);
       const [isLocalOutage, setIsLocalOutage] = useState(false);
+      const [ignoreRealtimeSync, setIgnoreRealtimeSync] = useState(false);
+      const ignoreRealtimeSyncRef = useRef(false);
       const [videoOk, setVideoOk] = useState(true);
       const downVideoRef = useRef(null);
       const btnRef = useRef(null);
@@ -554,11 +588,15 @@
 
       async function handleOutagePress(){
         if (isDown) return;
+        console.log('Button pressed - starting outage process');
+        
         const t = now();
         const userId = generateUserId();
+        console.log('Generated user ID:', userId);
         
         // Check if we should make it global
         const shouldGoGlobal = await checkVoteThreshold(userId, t);
+        console.log('Should go global:', shouldGoGlobal);
         
         prevLastOutageTsRef.current = lastOutageTs;
         prevStreaksRef.current = streaks;
@@ -567,6 +605,7 @@
         const newEntry = { startedAt:lastOutageTs, endedAt:t, uptimeMs };
         const next = [newEntry, ...(streaks||[])].slice(0,1000);
         
+        console.log('Setting local state - outage should be visible now');
         setStreaks(next); 
         setLastOutageTs(t); 
         setShowRIP(true); 
@@ -578,19 +617,27 @@
         
         if (shouldGoGlobal) {
           // Global outage - affects everyone and sends Slack notification
+          console.log('Making outage global');
           setIsLocalOutage(false);
+          setIgnoreRealtimeSync(false); // Allow real-time sync for global outages
           dbMarkDown(t);
         } else {
           // Local outage - only affects this user, no Slack notification
+          console.log('Keeping outage local - waiting for more votes');
           setIsLocalOutage(true);
-          console.log('Local outage - waiting for more votes to go global');
+          setIgnoreRealtimeSync(true); // Prevent real-time sync from overriding local outage
+          ignoreRealtimeSyncRef.current = true; // Set ref immediately
+          console.log('Set ignoreRealtimeSync to true');
         }
       }
 
       function closeRIP(){
+        console.log('Closing RIP - re-enabling real-time sync');
         setShowRIP(false); 
         setIsDown(false);
         setIsLocalOutage(false);
+        setIgnoreRealtimeSync(false); // Re-enable real-time sync
+        ignoreRealtimeSyncRef.current = false; // Reset ref immediately
         const t = now();
         setLastOutageTs(t);
         persist(t, streaks, false);
