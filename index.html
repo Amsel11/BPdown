@@ -149,6 +149,10 @@
       streaks: "bp_uptime_streaks",
       isDown: "bp_is_down",
     };
+    
+    // Voting system configuration
+    const VOTE_THRESHOLD = 2; // Number of people needed to confirm outage
+    const VOTE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes in milliseconds
     const now = () => Date.now();
     const getStressDuration = () => {
       // Try to get the CSS variable from the document root
@@ -159,6 +163,42 @@
       }
       return 2000; // Fallback to 2 seconds
     };
+    
+    // Generate unique user ID
+    function generateUserId() {
+      let userId = localStorage.getItem('bp_user_id');
+      if (!userId) {
+        userId = 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+        localStorage.setItem('bp_user_id', userId);
+      }
+      return userId;
+    }
+    
+    // Check if we have enough votes to make outage global
+    async function checkVoteThreshold(userId, timestamp) {
+      if (!supabase) return false;
+      
+      try {
+        // Add this user's vote
+        await supabase.from('outage_votes').insert({
+          user_id: userId,
+          created_at: new Date(timestamp).toISOString(),
+          expires_at: new Date(timestamp + VOTE_WINDOW_MS).toISOString()
+        });
+        
+        // Count votes in the last 10 minutes
+        const { data: votes } = await supabase
+          .from('outage_votes')
+          .select('*')
+          .gte('created_at', new Date(timestamp - VOTE_WINDOW_MS).toISOString())
+          .lte('expires_at', new Date(timestamp + VOTE_WINDOW_MS).toISOString());
+        
+        return votes && votes.length >= VOTE_THRESHOLD;
+      } catch (e) {
+        console.warn('Vote check error', e);
+        return false;
+      }
+    }
     const formatDuration = (ms) => {
       if (ms < 0 || !Number.isFinite(ms)) return "--";
       const s = Math.floor(ms / 1000);
@@ -287,6 +327,24 @@
             .subscribe();
         })();
         return () => { if (channel) supabase.removeChannel(channel); };
+      }, []);
+
+      // Clean up expired votes every minute
+      useEffect(() => {
+        if (!supabase) return;
+        
+        const cleanup = setInterval(async () => {
+          try {
+            await supabase
+              .from('outage_votes')
+              .delete()
+              .lt('expires_at', new Date().toISOString());
+          } catch (e) {
+            console.warn('Vote cleanup error', e);
+          }
+        }, 60000); // Every minute
+        
+        return () => clearInterval(cleanup);
       }, []);
 
       // Fallback polling: keep clients in sync even if Realtime isn't firing
@@ -421,6 +479,7 @@
       const [subtextIndex, setSubtextIndex] = useState(0);
       const [showRIP, setShowRIP] = useState(false);
       const [isStressed, setIsStressed] = useState(false);
+      const [isLocalOutage, setIsLocalOutage] = useState(false);
       const [videoOk, setVideoOk] = useState(true);
       const downVideoRef = useRef(null);
       const btnRef = useRef(null);
@@ -493,26 +552,45 @@
         r.addEventListener('animationend', () => r.remove(), { once:true });
       }
 
-      function handleOutagePress(){
+      async function handleOutagePress(){
         if (isDown) return;
-        spawnRipple();
         const t = now();
+        const userId = generateUserId();
+        
+        // Check if we should make it global
+        const shouldGoGlobal = await checkVoteThreshold(userId, t);
+        
         prevLastOutageTsRef.current = lastOutageTs;
         prevStreaksRef.current = streaks;
         accidentalStartRef.current = t;
         const uptimeMs = t - lastOutageTs;
         const newEntry = { startedAt:lastOutageTs, endedAt:t, uptimeMs };
         const next = [newEntry, ...(streaks||[])].slice(0,1000);
-        setStreaks(next); setLastOutageTs(t); setShowRIP(true); setIsDown(true);
+        
+        setStreaks(next); 
+        setLastOutageTs(t); 
+        setShowRIP(true); 
+        setIsDown(true);
         setIsStressed(true);
         setTimeout(() => setIsStressed(false), getStressDuration());
         playFlatline();
         persist(t, next, true);
-        dbMarkDown(t);
+        
+        if (shouldGoGlobal) {
+          // Global outage - affects everyone and sends Slack notification
+          setIsLocalOutage(false);
+          dbMarkDown(t);
+        } else {
+          // Local outage - only affects this user, no Slack notification
+          setIsLocalOutage(true);
+          console.log('Local outage - waiting for more votes to go global');
+        }
       }
 
       function closeRIP(){
-        setShowRIP(false); setIsDown(false);
+        setShowRIP(false); 
+        setIsDown(false);
+        setIsLocalOutage(false);
         const t = now();
         setLastOutageTs(t);
         persist(t, streaks, false);
@@ -732,9 +810,16 @@
 
           {/* RIP Popup */}
           {showRIP && (
-            <div className="modal-backdrop popup-enter" onClick={(e) => e.target === e.currentTarget && closeRIP()}>
+            <div className="modal-backdrop popup-enter">
               <div className="rip-card">
-                <div style={{fontWeight:800,fontSize:22,marginBottom:12}}>Big Purple is down RIP 💀</div>
+                <div style={{fontWeight:800,fontSize:22,marginBottom:12}}>
+                  Big Purple is down RIP 💀
+                  {isLocalOutage && (
+                    <div style={{fontSize:14,color:'#ff6b6b',marginTop:4}}>
+                      ⚠️ Local outage - waiting for {VOTE_THRESHOLD - 1} more vote(s) to go global
+                    </div>
+                  )}
+                </div>
                 <div style={{margin:'0 auto',width:360,maxWidth:'100%'}}>
                   <div className="sys-panel" style={{padding:0, background:'transparent', border:'none'}}>
                     {/* Down-state media with GIF fallback; ensure autoplay on mobile */}
